@@ -1,0 +1,7 @@
+mobile/.dart_tool/
+mobile/.flutter-plugins*
+mobile/build/
+mobile/android/
+mobile/ios/
+server/server
+.DS_Store

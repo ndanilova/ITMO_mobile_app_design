@@ -46,13 +46,12 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> chooseReport() => run(() async {
-    final result = await FilePicker.platform.pickFiles(
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['csv'],
     );
-    if (result == null) return;
+    if (file == null) return;
     preview = null;
-    final file = result.files.single;
     if (file.size > 1024 * 1024) {
       throw const FormatException('Максимальный размер файла — 1 МиБ');
     }

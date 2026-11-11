@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -52,11 +52,14 @@ class _ImportScreenState extends State<ImportScreen> {
     );
     if (file == null) return;
     preview = null;
-    if (file.size > 1024 * 1024) {
-      throw const FormatException('Максимальный размер файла — 1 МиБ');
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in file.readAsByteStream()) {
+      if (bytes.length + chunk.length > 1024 * 1024) {
+        throw const FormatException('Максимальный размер файла — 1 МиБ');
+      }
+      bytes.add(chunk);
     }
-    final bytes = await File(file.path!).readAsBytes();
-    preview = await api.requestJson('POST', '/imports', bytes);
+    preview = await api.requestJson('POST', '/imports', bytes.takeBytes());
   });
 
   Future<void> confirm() => run(() async {

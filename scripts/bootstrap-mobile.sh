@@ -31,25 +31,21 @@ ios.write_text(re.sub(
 PLATFORMS
 fi
 
-# The local demo API uses HTTP. Allow it in Android debug builds.
-cat > android/app/src/debug/AndroidManifest.xml <<'MANIFEST'
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <application android:usesCleartextTraffic="true"/>
-</manifest>
-MANIFEST
-ios_plist=ios/Runner/Info.plist
-if ! grep -q NSAllowsLocalNetworking "$ios_plist"; then
-  python3 - "$ios_plist" <<'PY'
+# Native file selection and local storage do not require cleartext HTTP.
+python3 - <<'LOCAL'
+from pathlib import Path
 import plistlib
-import sys
-
-path = sys.argv[1]
-with open(path, "rb") as file:
+p = Path("ios/Runner/Info.plist")
+with p.open("rb") as file:
     config = plistlib.load(file)
-config.setdefault("NSAppTransportSecurity", {})["NSAllowsLocalNetworking"] = True
-with open(path, "wb") as file:
+security = config.get("NSAppTransportSecurity", {})
+security.pop("NSAllowsLocalNetworking", None)
+if not security:
+    config.pop("NSAppTransportSecurity", None)
+with p.open("wb") as file:
     plistlib.dump(config, file)
-PY
-fi
+manifest = Path("android/app/src/debug/AndroidManifest.xml")
+if manifest.exists():
+    manifest.write_text(manifest.read_text().replace(' android:usesCleartextTraffic="true"', ""))
+LOCAL
 flutter pub get --enforce-lockfile

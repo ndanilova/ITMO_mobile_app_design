@@ -1,168 +1,88 @@
-import 'dart:typed_data';
+import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'dashboard.dart';
-import 'saldo_api.dart';
+import 'design.dart';
+import 'local_store.dart';
 
-void main() => runApp(
-  MaterialApp(
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const SaldoApp());
+}
+
+class SaldoApp extends StatefulWidget {
+  const SaldoApp({super.key});
+  @override
+  State<SaldoApp> createState() => _SaldoAppState();
+}
+
+class _SaldoAppState extends State<SaldoApp> {
+  LocalStore? store;
+  String? error;
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() => error = null);
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final local = LocalStore(File('${directory.path}/saldo-v1.json'));
+      await local.load();
+      if (mounted) setState(() => store = local);
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => error = 'Не удалось прочитать локальные данные. Повторите открытие приложения.',
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: saldoGreen),
+      fontFamily: 'Manrope',
       scaffoldBackgroundColor: saldoBackground,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: saldoGreen,
+        primary: saldoGreen,
+        surface: saldoBackground,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: saldoBackground,
+        centerTitle: true,
+      ),
+      dividerTheme: const DividerThemeData(color: line),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(backgroundColor: saldoGreen),
+      ),
       useMaterial3: true,
     ),
-    home: const Dashboard(importScreen: ImportScreen()),
-  ),
-);
-
-class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key});
-
-  @override
-  State<ImportScreen> createState() => _ImportScreenState();
-}
-
-class _ImportScreenState extends State<ImportScreen> {
-  final api = SaldoApi();
-  Map<String, dynamic>? preview;
-  String? error;
-  bool busy = false;
-
-  Future<void> run(Future<void> Function() action) async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      await action();
-    } catch (exception) {
-      error = exception.toString();
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> chooseReport() => run(() async {
-    final file = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: ['csv'],
-    );
-    if (file == null) return;
-    preview = null;
-    final bytes = BytesBuilder(copy: false);
-    await for (final chunk in file.readAsByteStream()) {
-      if (bytes.length + chunk.length > 1024 * 1024) {
-        throw const FormatException('Максимальный размер файла — 1 МиБ');
-      }
-      bytes.add(chunk);
-    }
-    preview = await api.requestJson('POST', '/imports', bytes.takeBytes());
-  });
-
-  Future<void> confirm() => run(() async {
-    final result = await api.requestJson(
-      'POST',
-      '/imports/${preview!['id']}/confirm',
-    );
-    preview!['confirmed'] = result['confirmed'];
-  });
-
-  void openPortfolio() {
-    final trades = api.requestJson('GET', '/portfolio/trades');
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => PortfolioScreen(trades: trades),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    api.close();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final trades = preview?['trades'] as List<dynamic>? ?? [];
-    final confirmed = preview?['confirmed'] == true;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Сальдо · Импорт')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          FilledButton(
-            onPressed: busy ? null : chooseReport,
-            child: const Text('Выбрать CSV'),
+    home: store != null
+        ? Dashboard(store: store!)
+        : Scaffold(
+            body: Center(
+              child: error == null
+                  ? const CircularProgressIndicator()
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(error!),
+                        ),
+                        TextButton(
+                          onPressed: load,
+                          child: const Text('Повторить'),
+                        ),
+                      ],
+                    ),
+            ),
           ),
-          OutlinedButton(
-            onPressed: openPortfolio,
-            child: const Text('Открыть портфель'),
-          ),
-          if (busy) const LinearProgressIndicator(),
-          if (error != null) Text(error!),
-          if (preview != null) ...[
-            Text('Сделок: ${trades.length}'),
-            for (final trade in trades)
-              ListTile(
-                title: Text(trade['id'] as String),
-                trailing: Text(trade['amount'] as String),
-              ),
-            if (confirmed)
-              const Text('Импорт подтверждён')
-            else
-              FilledButton(
-                onPressed: busy ? null : confirm,
-                child: const Text('Подтвердить импорт'),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class PortfolioScreen extends StatelessWidget {
-  const PortfolioScreen({super.key, required this.trades});
-
-  final Future<Map<String, dynamic>> trades;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Портфель')),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: trades,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return const Center(
-              child: Text(
-                'Не удалось загрузить сделки. Откройте портфель снова.',
-              ),
-            );
-          }
-          final items = snapshot.requireData['trades'] as List<dynamic>;
-          if (items.isEmpty) {
-            return const Center(child: Text('Подтверждённых сделок пока нет'));
-          }
-          return ListView.builder(
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final trade = items[index] as Map<String, dynamic>;
-              return ListTile(
-                title: Text(trade['id'] as String),
-                trailing: Text(trade['amount'] as String),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
+  );
 }

@@ -1,334 +1,212 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'saldo_api.dart';
-
-const saldoGreen = Color(0xff1f5f4a);
-const saldoBackground = Color(0xfff4f5f1);
-const muted = Color(0xff5d6359);
-const line = Color(0xffe3e5de);
-const tint = Color(0xffdcebe3);
-const red = Color(0xffb42318);
-const teal = Color(0xff13795b);
-const ink = Color(0xff15181c);
-
-const tabs = ['Счета', 'Категории', 'Операции', 'Портфель', 'Статистика'];
-const tabIcons = [
-  Icons.account_balance_wallet_outlined,
-  Icons.category_outlined,
-  Icons.receipt_long_outlined,
-  Icons.trending_up,
-  Icons.bar_chart_outlined,
-];
-
-typedef Entry = ({
-  String title,
-  String note,
-  String amount,
-  IconData icon,
-  Color color,
-});
-
-const categories = <Entry>[
-  (
-    title: 'Продукты',
-    note: '',
-    amount: '12 480',
-    icon: Icons.kitchen_outlined,
-    color: Color(0xff6941c6),
-  ),
-  (
-    title: 'Кафе',
-    note: '',
-    amount: '3 150',
-    icon: Icons.restaurant,
-    color: Color(0xffae2878),
-  ),
-  (
-    title: 'Развлечения',
-    note: '',
-    amount: '1 990',
-    icon: Icons.movie_outlined,
-    color: Color(0xff3155c7),
-  ),
-  (
-    title: 'Транспорт',
-    note: '',
-    amount: '2 340',
-    icon: Icons.directions_bus_outlined,
-    color: Color(0xff106e86),
-  ),
-  (
-    title: 'Здоровье',
-    note: '',
-    amount: '0',
-    icon: Icons.favorite_border,
-    color: teal,
-  ),
-  (
-    title: 'Подписки',
-    note: '',
-    amount: '899',
-    icon: Icons.repeat,
-    color: Color(0xff507027),
-  ),
-  (
-    title: 'Подарки',
-    note: '',
-    amount: '0',
-    icon: Icons.card_giftcard,
-    color: red,
-  ),
-  (
-    title: 'Покупки',
-    note: '',
-    amount: '6 200',
-    icon: Icons.checkroom,
-    color: Color(0xffa84d07),
-  ),
-  (
-    title: 'Жильё',
-    note: '',
-    amount: '28 000',
-    icon: Icons.home_outlined,
-    color: Color(0xff106e86),
-  ),
-  (
-    title: 'Прочее',
-    note: '',
-    amount: '0',
-    icon: Icons.help_outline,
-    color: muted,
-  ),
-];
+import 'design.dart';
+import 'figma_icons.dart';
+import 'forms.dart';
+import 'import_screen.dart';
+import 'local_store.dart';
 
 class Dashboard extends StatefulWidget {
-  const Dashboard({super.key, required this.importScreen});
-  final Widget importScreen;
-
+  const Dashboard({super.key, required this.store});
+  final LocalStore store;
   @override
   State<Dashboard> createState() => _DashboardState();
 }
 
 class _DashboardState extends State<Dashboard> {
-  int tab = 2;
-  int accountsFilter = 0;
-  int categoryFilter = 0;
-  int statsFilter = 0;
-  bool showBalance = true;
-  DateTime month = DateTime(2026, 10);
-  final operations = <Entry>[];
-
-  final api = SaldoApi();
-  String? operationsError;
+  LocalStore get store => widget.store;
+  int tab = 2, accountFilter = 0, categoryFilter = 0, statsFilter = 0;
+  DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+  String? broker;
+  bool hidden = false;
+  String search = '';
 
   @override
   void initState() {
     super.initState();
-    loadOperations();
+    store.addListener(refresh);
   }
 
   @override
   void dispose() {
-    api.close();
+    store.removeListener(refresh);
     super.dispose();
   }
 
-  Future<void> loadOperations() async {
-    try {
-      final response = await api.requestJson('GET', '/operations');
-      final items = (response['operations'] as List<dynamic>).map((item) {
-        final title = item['title'] as String;
-        final style = categories.firstWhere(
-          (entry) => entry.title == title,
-          orElse: () => categories.last,
-        );
-        return (
-          title: title,
-          note: item['note'] as String,
-          amount: item['amount'] as String,
-          icon: style.icon,
-          color: style.color,
-        );
-      }).toList();
-      if (!mounted) return;
-      setState(() {
-        operationsError = null;
-        operations.clear();
-        operations.addAll(items);
-      });
-    } catch (_) {
-      if (mounted)
-        setState(() => operationsError = 'Не удалось загрузить операции');
-    }
+  void refresh() {
+    if (mounted) setState(() {});
   }
 
-  Future<void> persistOperation(Entry entry) async {
-    await api.requestJson(
-      'POST',
-      '/operations',
-      utf8.encode(
-        jsonEncode({
-          'title': entry.title,
-          'note': entry.note,
-          'amount': entry.amount,
-        }),
-      ),
-      ContentType.json,
-    );
-  }
-
-  String get period {
-    const months = [
-      'Январь',
-      'Февраль',
-      'Март',
-      'Апрель',
-      'Май',
-      'Июнь',
-      'Июль',
-      'Август',
-      'Сентябрь',
-      'Октябрь',
-      'Ноябрь',
-      'Декабрь',
-    ];
-    return '${months[month.month - 1]} ${month.year}';
-  }
-
-  void openImport() => Navigator.of(
+  Future<void> showForm(Widget form) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: saldoBackground,
+    builder: (_) => form,
+  );
+  Future<void> operation() => showForm(OperationForm(store: store));
+  void importReport() => Navigator.push<void>(
     context,
-  ).push(MaterialPageRoute<void>(builder: (_) => widget.importScreen));
+    MaterialPageRoute(builder: (_) => ImportScreen(store: store)),
+  );
+  Account? get selectedBroker {
+    final accounts = store.accounts.where((a) => a.kind == 'Инвестиции');
+    return accounts.where((a) => a.id == broker).firstOrNull ??
+        accounts.firstOrNull;
+  }
 
-  Future<void> addOperation() async {
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: saldoBackground,
-      builder: (_) => OperationSheet(persist: persistOperation),
-    );
-    if (saved == true && mounted) {
-      setState(() => tab = 2);
-      await loadOperations();
+  Future<void> demo() async {
+    try {
+      await store.seed();
+    } catch (e) {
+      if (mounted) message(context, e);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: ListView(
-          key: PageStorageKey(tab),
-          padding: EdgeInsets.fromLTRB(16, 12, 16, tab == 2 ? 80 : 12),
-          children: switch (tab) {
-            0 => accounts(),
-            1 => categoryPage(),
-            2 => operationPage(),
-            3 => portfolio(),
-            _ => statistics(),
-          },
-        ),
-      ),
-      floatingActionButton: tab == 2
-          ? FloatingActionButton.extended(
-              backgroundColor: saldoGreen,
-              foregroundColor: Colors.white,
-              onPressed: addOperation,
-              icon: const Icon(Icons.add),
-              label: const Text('Добавить'),
-            )
-          : null,
-      bottomNavigationBar: ColoredBox(
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      bottom: false,
+      child: store.accounts.isEmpty
+          ? onboarding()
+          : ListView(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, tab == 2 ? 90 : 20),
+              children: switch (tab) {
+                0 => accounts(),
+                1 => categoryPage(),
+                2 => operations(),
+                3 => portfolio(),
+                _ => statistics(),
+              },
+            ),
+    ),
+    floatingActionButton: tab == 2 && store.accounts.isNotEmpty
+        ? FloatingActionButton.extended(
+            onPressed: operation,
+            backgroundColor: saldoGreen,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add),
+            label: const Text('Добавить'),
+          )
+        : null,
+    bottomNavigationBar: Container(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        child: SafeArea(
-          top: false,
-          child: Row(
-            children: List.generate(tabs.length, (index) {
-              final selected = index == tab;
-              return Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => tab = index),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 56,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: selected ? tint : null,
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Icon(
-                            tabIcons[index],
-                            size: 20,
-                            color: selected ? saldoGreen : muted,
-                          ),
+        border: Border(top: BorderSide(color: line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: List.generate(
+            tabs.length,
+            (i) => Expanded(
+              child: InkWell(
+                onTap: () => setState(() => tab = i),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: tab == i ? tint : null,
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          tabs[index],
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: selected ? saldoGreen : muted,
-                          ),
+                        child: FigmaIcon(
+                          tabIcons[i],
+                          size: 22,
+                          color: tab == i ? saldoGreen : muted,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        tabs[i],
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: tab == i ? saldoGreen : muted,
+                          fontWeight: tab == i
+                              ? FontWeight.bold
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            }),
+              ),
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget balance({
-    IconData? action,
-    VoidCallback? onPressed,
-    bool canHide = false,
-  }) => Stack(
-    alignment: Alignment.topRight,
-    children: [
-      Center(
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: canHide
-                  ? () => setState(() => showBalance = !showBalance)
-                  : null,
-              child: Text(
-                canHide
-                    ? 'Общий баланс  ${showBalance ? "◉" : "○"}'
-                    : 'Общий баланс',
-                style: const TextStyle(color: muted),
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              showBalance ? '646 720,15 ₽' : '••••••',
-              style: const TextStyle(
-                fontSize: 27,
-                fontWeight: FontWeight.w700,
-                color: ink,
-              ),
-            ),
-          ],
-        ),
-      ),
-      if (action != null) CircleAction(icon: action, onPressed: onPressed!),
-    ],
+    ),
   );
-
-  Widget monthBar() => Row(
+  Widget onboarding() => Padding(
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Icon(
+          Icons.account_balance_wallet_outlined,
+          size: 60,
+          color: saldoGreen,
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Сальдо',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Доходы, расходы и инвестиции на вашем устройстве.',
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 28),
+        FilledButton(
+          onPressed: () => showForm(AccountForm(store: store)),
+          child: const Text('Добавить первый счёт'),
+        ),
+        TextButton(onPressed: demo, child: const Text('Посмотреть на примере')),
+      ],
+    ),
+  );
+  Widget balance({IconData? action, VoidCallback? onPressed}) => SizedBox(
+    height: 75,
+    child: Stack(
+      alignment: Alignment.topRight,
+      children: [
+        Center(
+          child: Column(
+            children: [
+              InkWell(
+                onTap: () => setState(() => hidden = !hidden),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Text(
+                    'Общий баланс',
+                    style: TextStyle(fontSize: 14, color: muted),
+                  ),
+                ),
+              ),
+              Text(
+                hidden ? '••••••' : money(store.capital),
+                style: const TextStyle(
+                  fontSize: 27,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (action != null) CircleAction(icon: action, onPressed: onPressed!),
+      ],
+    ),
+  );
+  Widget period() => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
       IconButton(
@@ -336,9 +214,25 @@ class _DashboardState extends State<Dashboard> {
             setState(() => month = DateTime(month.year, month.month - 1)),
         icon: const Icon(Icons.chevron_left),
       ),
-      Text(
-        period,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      TextButton(
+        onPressed: () async {
+          final date = await showDatePicker(
+            context: context,
+            initialDate: month,
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2100),
+          );
+          if (date != null)
+            setState(() => month = DateTime(date.year, date.month));
+        },
+        child: Text(
+          monthLabel(month),
+          style: const TextStyle(
+            color: ink,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
       IconButton(
         onPressed: () =>
@@ -347,84 +241,231 @@ class _DashboardState extends State<Dashboard> {
       ),
     ],
   );
-
-  List<Widget> operationPage() => [
-    balance(
-      action: Icons.search,
-      onPressed: () => showSearch<void>(
-        context: context,
-        delegate: OperationSearch([...operations, ...demoOperations]),
-      ),
-    ),
-    monthBar(),
-    const Panel(
-      child: Row(
-        children: [
-          Expanded(child: Metric('Начальный баланс', '612 340,25 ₽')),
-          Expanded(child: Metric('Конечный баланс', '646 720,15 ₽')),
-        ],
-      ),
-    ),
-    const SizedBox(height: 22),
-    if (operationsError != null)
-      TextButton(
-        onPressed: loadOperations,
-        child: Text('$operationsError · Повторить'),
-      ),
-    if (operations.isNotEmpty) ...[
-      const SectionTitle('Добавленные операции', ''),
-      for (final entry in operations) EntryTile(entry),
-    ],
-    if (month.year == 2026 && month.month == 10) ...[
-      const DayTitle('31', 'суббота', '−2 820,60 ₽', red),
-      for (final entry in demoOperations.take(2)) EntryTile(entry),
-      const DayTitle('30', 'пятница', '+47 500 ₽', teal),
-      for (final entry in demoOperations.skip(2)) EntryTile(entry),
-      const DayTitle('29', 'четверг', '', muted),
-    ] else
-      const Center(
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Text('За этот месяц операций нет'),
-        ),
-      ),
-  ];
+  Entry accountEntry(Account a) {
+    final value = store.balance(a.id);
+    return (
+      title: a.name,
+      note: a.currency == 'RUB' ? a.kind : '≈ ${money(store.rub(value, a.id))}',
+      amount: money(value, a.currency),
+      icon: a.kind == 'Инвестиции'
+          ? Icons.trending_up
+          : a.kind == 'Сбережения'
+          ? Icons.savings_outlined
+          : Icons.account_balance_wallet_outlined,
+      color: a.kind == 'Инвестиции'
+          ? saldoGreen
+          : a.kind == 'Сбережения'
+          ? const Color(0xffa84d07)
+          : teal,
+    );
+  }
 
   List<Widget> accounts() => [
-    balance(canHide: true),
-    const SizedBox(height: 16),
+    balance(
+      action: Icons.add,
+      onPressed: () => showForm(AccountForm(store: store)),
+    ),
     Segments(
       labels: const ['Счета', 'Долги', 'Всего'],
-      selected: accountsFilter,
-      change: (i) => setState(() => accountsFilter = i),
+      selected: accountFilter,
+      change: (i) => setState(() => accountFilter = i),
     ),
-    if (accountsFilter == 1)
-      const Padding(padding: EdgeInsets.all(20), child: Text('Долгов пока нет'))
-    else ...[
-      const SectionTitle('Счета', '87 970,15 ₽'),
-      for (final entry in demoAccounts.take(3)) Panel(child: EntryTile(entry)),
-      const SectionTitle('Сбережения', '320 000 ₽'),
-      for (final entry in demoAccounts.skip(3).take(2))
-        Panel(child: EntryTile(entry)),
-      const SectionTitle('Инвестиции', '238 750 ₽'),
-      Panel(
-        child: EntryTile(
-          demoAccounts.last,
-          onTap: () => setState(() => tab = 3),
+    const SizedBox(height: 8),
+    for (final kind in ['Счета', 'Сбережения', 'Инвестиции', 'Долги'])
+      if ((accountFilter == 2 ||
+              (accountFilter == 1 ? kind == 'Долги' : kind != 'Долги')) &&
+          store.accounts.any((a) => a.kind == kind)) ...[
+        SectionTitle(
+          kind,
+          money(
+            store.accounts
+                .where((a) => a.kind == kind)
+                .fold(
+                  0,
+                  (sum, a) => sum + store.rub(store.balance(a.id), a.id),
+                ),
+          ),
         ),
-      ),
-    ],
+        for (final a in store.accounts.where((a) => a.kind == kind))
+          Panel(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: EntryTile(
+              accountEntry(a),
+              onTap: () => showForm(AccountForm(store: store, existing: a)),
+            ),
+          ),
+      ],
+    if (accountFilter == 1 && !store.accounts.any((a) => a.kind == 'Долги'))
+      const EmptyState('Долгов пока нет'),
   ];
 
-  List<Widget> categoryPage() {
-    final entries = categoryFilter == 0
-        ? categories
-        : demoOperations.where((item) => item.title == 'Зарплата').toList();
+  Entry operationEntry(Operation o) {
+    final a = store.account(o.account);
+    final style = categoryStyle(o.category);
+    return (
+      title: o.type == 'transfer' ? 'Перевод' : o.category,
+      note:
+          '${o.note.isEmpty ? '' : '${o.note} · '}${a.name}${o.type == 'transfer' ? ' → ${store.account(o.target).name}' : ''}',
+      amount:
+          '${o.type == 'expense'
+              ? '−'
+              : o.type == 'income'
+              ? '+'
+              : ''}${money(o.amount, a.currency)}',
+      icon: o.type == 'transfer' ? Icons.swap_horiz : style.icon,
+      color: style.color,
+    );
+  }
+
+  List<Widget> operations() {
+    final items = store
+        .monthOperations(month)
+        .where(
+          (o) => '${o.category} ${o.note} ${store.account(o.account).name}'
+              .toLowerCase()
+              .contains(search.toLowerCase()),
+        )
+        .toList();
+    final dates = items.map((o) => o.date).toSet();
+    final start = store.accounts.fold(
+      0,
+      (sum, a) => sum + store.rub(store.balance(a.id, month), a.id),
+    );
+    final end = store.accounts.fold(
+      0,
+      (sum, a) =>
+          sum +
+          store.rub(
+            store.balance(a.id, DateTime(month.year, month.month + 1)),
+            a.id,
+          ),
+    );
     return [
-      balance(),
-      monthBar(),
+      balance(
+        action: Icons.search,
+        onPressed: () async {
+          final query = await textDialog(
+            context,
+            'Поиск операций',
+            initial: search,
+          );
+          if (query != null) setState(() => search = query);
+        },
+      ),
+      period(),
+      Panel(
+        child: Row(
+          children: [
+            Expanded(child: Metric('Начальный баланс', money(start))),
+            Expanded(child: Metric('Конечный баланс', money(end))),
+          ],
+        ),
+      ),
+      if (search.isNotEmpty)
+        TextButton(
+          onPressed: () => setState(() => search = ''),
+          child: Text('Сбросить поиск «$search»'),
+        ),
+      const SizedBox(height: 18),
+      if (items.isEmpty) const EmptyState('Операций за этот период нет'),
+      for (final date in dates) ...[
+        Row(
+          children: [
+            Text(
+              '${DateTime.parse(date).day}',
+              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                dateLabel(date),
+                style: const TextStyle(color: muted, fontSize: 12),
+              ),
+            ),
+            Text(
+              money(
+                items
+                    .where((o) => o.date == date && o.type != 'transfer')
+                    .fold(
+                      0,
+                      (s, o) =>
+                          s +
+                          (o.type == 'income' ? 1 : -1) *
+                              store.rub(o.amount, o.account),
+                    ),
+              ),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        const Divider(),
+        for (final o in items.where((o) => o.date == date))
+          EntryTile(
+            operationEntry(o),
+            onTap: () async {
+              final remove = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(o.category),
+                  content: Text(
+                    '${dateLabel(o.date)}\n${o.note}\n${money(o.amount, store.account(o.account).currency)}',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Закрыть'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Удалить'),
+                    ),
+                  ],
+                ),
+              );
+              if (remove == true) {
+                try {
+                  await store.deleteOperation(o.id);
+                } catch (e) {
+                  if (mounted) message(context, e);
+                }
+              }
+            },
+          ),
+        const SizedBox(height: 12),
+      ],
+    ];
+  }
+
+  List<Widget> categoryPage() {
+    final type = categoryFilter == 0 ? 'expense' : 'income';
+    final names = categoryFilter == 0
+        ? store.categories
+        : store
+              .monthOperations(month)
+              .where((o) => o.type == 'income')
+              .map((o) => o.category)
+              .toSet()
+              .toList();
+    return [
+      balance(
+        action: Icons.edit_outlined,
+        onPressed: () async {
+          final name = await textDialog(context, 'Новая категория');
+          if (name != null) {
+            try {
+              await store.addCategory(name);
+            } catch (e) {
+              if (mounted) message(context, e);
+            }
+          }
+        },
+      ),
+      period(),
       Segments(
-        labels: const ['Расходы\n55 059 ₽', 'Доходы\n100 755,50 ₽'],
+        labels: [
+          'Расходы\n${money(store.total(month, 'expense'))}',
+          'Доходы\n${money(store.total(month, 'income'))}',
+        ],
         selected: categoryFilter,
         change: (i) => setState(() => categoryFilter = i),
       ),
@@ -432,1042 +473,599 @@ class _DashboardState extends State<Dashboard> {
       GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        itemCount: entries.length,
+        itemCount: names.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          mainAxisExtent: 84,
+          mainAxisExtent: 104,
           mainAxisSpacing: 8,
           crossAxisSpacing: 10,
         ),
         itemBuilder: (_, i) {
-          final entry = entries[i];
-          return Panel(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    EntryIcon(entry, size: 38),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            entry.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            categoryFilter == 0
-                                ? '${entry.amount} ₽'
-                                : entry.amount,
-                            style: TextStyle(
-                              color: categoryFilter == 0 ? red : teal,
-                              fontWeight: FontWeight.w600,
+          final name = names[i], style = categoryStyle(name);
+          final amount = store.total(month, type, name),
+              limit = store.budgets[name] ?? 0;
+          return InkWell(
+            onTap: () async {
+              final result = await textDialog(
+                context,
+                'Лимит в месяц, ₽',
+                initial: inputMoney(limit),
+                numeric: true,
+              );
+              if (result != null) {
+                try {
+                  await store.saveBudget(name, decimal(result));
+                } catch (e) {
+                  if (mounted) message(context, e);
+                }
+              }
+            },
+            child: Panel(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      EntryIcon(style, size: 38),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
+                            FittedBox(
+                              child: Text(
+                                money(amount),
+                                style: TextStyle(
+                                  color: type == 'expense' ? red : teal,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  if (limit > 0)
+                    Text(
+                      'из ${money(limit)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: amount > limit ? red : muted,
                       ),
                     ),
-                  ],
-                ),
-                const Spacer(),
-                LinearProgressIndicator(
-                  value: entry.amount == '0'
-                      ? 0
-                      : i == 8
-                      ? 1
-                      : .25,
-                  color: entry.color,
-                  backgroundColor: line,
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  LinearProgressIndicator(
+                    value: limit > 0 ? (amount / limit).clamp(0, 1) : 0,
+                    color: amount > limit && limit > 0 ? red : style.color,
+                    backgroundColor: line,
+                    minHeight: 4,
+                  ),
+                ],
+              ),
             ),
           );
         },
       ),
+      TextButton(
+        onPressed: () async {
+          final name = await textDialog(context, 'Новая категория');
+          if (name != null) {
+            try {
+              await store.addCategory(name);
+            } catch (e) {
+              if (mounted) message(context, e);
+            }
+          }
+        },
+        child: const Text('+ Категория'),
+      ),
     ];
   }
 
-  List<Widget> portfolio() => [
-    Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Chip(label: Text('Брокерский счёт')),
-        CircleAction(icon: Icons.add, onPressed: openImport),
-      ],
-    ),
-    const SizedBox(height: 8),
-    const Panel(
-      color: saldoGreen,
-      padding: EdgeInsets.all(19),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Стоимость портфеля', style: TextStyle(color: tint)),
-          Text(
-            '186 450 ₽',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            '+6 897 ₽ (+4,4%) · за всё время',
-            style: TextStyle(color: tint),
-          ),
-          Divider(height: 28, color: Colors.white24),
-          Row(
-            children: [
-              Expanded(child: Metric('Вложено', '179 553 ₽', light: true)),
-              Expanded(
-                child: Metric('Выплаты за год', '+8 412 ₽', light: true),
-              ),
-              Expanded(child: Metric('Сегодня', '+0,3%', light: true)),
-            ],
-          ),
-        ],
-      ),
-    ),
-    const SizedBox(height: 16),
-    const Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Структура', style: TextStyle(fontWeight: FontWeight.w700)),
-          SizedBox(height: 10),
-          AllocationBar(),
-          SizedBox(height: 10),
-          Text('Акции  38%     Облигации  27%\nФонды  23%     Рубли  13%'),
-        ],
-      ),
-    ),
-    const SizedBox(height: 20),
-    Panel(
-      child: Column(
-        children: [
-          const SectionTitle('Демонстрационные позиции', ''),
-          for (final entry in holdings)
-            EntryTile(
-              entry,
-              onTap: entry.title.startsWith('ОФЗ')
-                  ? () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => AssetPage(addOperation: addOperation),
-                      ),
-                    )
-                  : null,
-            ),
-        ],
-      ),
-    ),
-    TextButton.icon(
-      onPressed: openImport,
-      icon: const Icon(Icons.upload_file),
-      label: const Text('Импорт и подтверждённые сделки'),
-    ),
-  ];
-
-  List<Widget> statistics() => [
-    monthBar(),
-    Segments(
-      labels: const ['Расходы', 'Доходы'],
-      selected: statsFilter,
-      change: (i) => setState(() => statsFilter = i),
-    ),
-    const SizedBox(height: 14),
-    Panel(
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          SizedBox(
-            width: 176,
-            height: 176,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(painter: DonutPainter(income: statsFilter == 1)),
-                Center(
-                  child: Metric(
-                    statsFilter == 0 ? 'Расходы' : 'Доходы',
-                    statsFilter == 0 ? '55 059 ₽' : '100 755,50 ₽',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          for (final entry
-              in (statsFilter == 0
-                  ? [8, 0, 7, 1, 3, 2, 5].map((i) => categories[i])
-                  : [demoOperations[2]]))
-            Column(
-              children: [
-                const Divider(height: 1, color: line),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(Icons.square_rounded, color: entry.color, size: 14),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(entry.title)),
-                      Text(
-                        statsFilter == 0 ? '${entry.amount} ₽' : entry.amount,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-        ],
-      ),
-    ),
-    const SizedBox(height: 14),
-    const Row(
-      children: [
-        Expanded(child: Panel(child: Metric('Отложено', '45 697 ₽'))),
-        SizedBox(width: 10),
-        Expanded(child: Panel(child: Metric('В среднем в день', '873 ₽'))),
-      ],
-    ),
-  ];
-}
-
-const demoOperations = <Entry>[
-  (
-    title: 'Продукты',
-    note: '«Перекрёсток» · Т-Банк карта',
-    amount: '−2 140,60 ₽',
-    icon: Icons.kitchen_outlined,
-    color: Color(0xff6941c6),
-  ),
-  (
-    title: 'Кафе',
-    note: 'Кофейня · Наличные',
-    amount: '−680 ₽',
-    icon: Icons.restaurant,
-    color: Color(0xffae2878),
-  ),
-  (
-    title: 'Зарплата',
-    note: 'Вторая часть · Т-Банк карта',
-    amount: '+47 500 ₽',
-    icon: Icons.work_outline,
-    color: teal,
-  ),
-  (
-    title: 'Перевод',
-    note: 'Т-Банк карта → Накопительный счёт',
-    amount: '20 000 ₽',
-    icon: Icons.swap_horiz,
-    color: muted,
-  ),
-  (
-    title: 'Пополнение брокерского',
-    note: 'Т-Банк карта → Брокерский счёт',
-    amount: '15 000 ₽',
-    icon: Icons.swap_horiz,
-    color: muted,
-  ),
-];
-const demoAccounts = <Entry>[
-  (
-    title: 'Т-Банк карта',
-    note: 'Основной счёт',
-    amount: '48 320,15 ₽',
-    icon: Icons.credit_card,
-    color: Color(0xff3155c7),
-  ),
-  (
-    title: 'Наличные',
-    note: 'Кошелёк',
-    amount: '3 200 ₽',
-    icon: Icons.account_balance_wallet_outlined,
-    color: teal,
-  ),
-  (
-    title: 'Доллары',
-    note: '≈ 36 450 ₽',
-    amount: r'450 $',
-    icon: Icons.attach_money,
-    color: Color(0xff6941c6),
-  ),
-  (
-    title: 'Накопительный счёт',
-    note: '16% годовых',
-    amount: '120 000 ₽',
-    icon: Icons.percent,
-    color: Color(0xffa84d07),
-  ),
-  (
-    title: 'Вклад на 6 месяцев',
-    note: '18% · до 14.03.2027',
-    amount: '200 000 ₽',
-    icon: Icons.lock_outline,
-    color: Color(0xff106e86),
-  ),
-  (
-    title: 'Брокерский счёт',
-    note: '+4,4% за всё время',
-    amount: '186 450 ₽',
-    icon: Icons.trending_up,
-    color: saldoGreen,
-  ),
-];
-const holdings = <Entry>[
-  (
-    title: 'Фонд на индекс МосБиржи',
-    note: '6000 шт. × 7,12 ₽',
-    amount: '42 720 ₽',
-    icon: Icons.stacked_line_chart,
-    color: Color(0xff3155c7),
-  ),
-  (
-    title: 'Сбербанк',
-    note: '120 шт. × 302,40 ₽',
-    amount: '36 288 ₽',
-    icon: Icons.show_chart,
-    color: teal,
-  ),
-  (
-    title: 'Лукойл',
-    note: '5 шт. × 6 850 ₽',
-    amount: '34 250 ₽',
-    icon: Icons.show_chart,
-    color: red,
-  ),
-  (
-    title: 'ОФЗ 26238',
-    note: '40 шт. × 612,30 ₽',
-    amount: '24 492 ₽',
-    icon: Icons.account_balance_outlined,
-    color: Color(0xffa84d07),
-  ),
-];
-
-class CircleAction extends StatelessWidget {
-  const CircleAction({super.key, required this.icon, required this.onPressed});
-  final IconData icon;
-  final VoidCallback onPressed;
-  @override
-  Widget build(BuildContext context) => IconButton.filled(
-    style: IconButton.styleFrom(
-      backgroundColor: Colors.white,
-      foregroundColor: ink,
-    ),
-    onPressed: onPressed,
-    icon: Icon(icon, size: 20),
-  );
-}
-
-class Panel extends StatelessWidget {
-  const Panel({
-    super.key,
-    required this.child,
-    this.color = Colors.white,
-    this.padding = const EdgeInsets.all(15),
-  });
-  final Widget child;
-  final Color color;
-  final EdgeInsets padding;
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 6),
-    padding: padding,
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(21),
-      border: Border.all(color: color == Colors.white ? line : color),
-    ),
-    child: child,
-  );
-}
-
-class Metric extends StatelessWidget {
-  const Metric(this.label, this.value, {super.key, this.light = false});
-  final String label, value;
-  final bool light;
-  @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Text(
-        label,
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 12, color: light ? tint : muted),
-      ),
-      const SizedBox(height: 3),
-      Text(
-        value,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: light ? Colors.white : ink,
+  List<Widget> portfolio() {
+    final a = selectedBroker;
+    if (a == null)
+      return [
+        const EmptyState('Добавьте брокерский счёт для инвестиций'),
+        FilledButton(
+          onPressed: () =>
+              showForm(AccountForm(store: store, kind: 'Инвестиции')),
+          child: const Text('Добавить брокерский счёт'),
         ),
-      ),
-    ],
-  );
-}
-
-class Segments extends StatelessWidget {
-  const Segments({
-    super.key,
-    required this.labels,
-    required this.selected,
-    required this.change,
-  });
-  final List<String> labels;
-  final int selected;
-  final ValueChanged<int> change;
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(4),
-    decoration: BoxDecoration(
-      color: const Color(0xffe8eae3),
-      borderRadius: BorderRadius.circular(15),
-    ),
-    child: Row(
-      children: List.generate(
-        labels.length,
-        (i) => Expanded(
-          child: Material(
-            color: i == selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(11),
-              onTap: () => change(i),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text(labels[i], textAlign: TextAlign.center),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class SectionTitle extends StatelessWidget {
-  const SectionTitle(this.title, this.amount, {super.key});
-  final String title, amount;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 3),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [Text(title), Text(amount)],
-    ),
-  );
-}
-
-class EntryIcon extends StatelessWidget {
-  const EntryIcon(this.entry, {super.key, this.size = 45});
-  final Entry entry;
-  final double size;
-  @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(
-      color: Color.lerp(Colors.white, entry.color, .15),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Icon(entry.icon, color: entry.color, size: 20),
-  );
-}
-
-class EntryTile extends StatelessWidget {
-  const EntryTile(this.entry, {super.key, this.onTap});
-  final Entry entry;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 3),
-      child: Row(
+      ];
+    final positions = store.positions(a.id);
+    final value = positions.fold(0, (s, p) => s + p.value);
+    final cost = positions.fold(0, (s, p) => s + p.cost);
+    final gain = positions.fold(0, (s, p) => s + p.profit);
+    final payouts = store.payouts
+        .where((p) => p.account == a.id && p.paid)
+        .fold(0, (s, p) => s + p.amount - p.tax);
+    final totalGain = gain + payouts;
+    final invested = store.trades
+        .where((t) => t.account == a.id && t.side == 'buy')
+        .fold(0, (sum, t) => sum + t.gross + t.fee + t.tax);
+    return [
+      Row(
         children: [
-          EntryIcon(entry),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (entry.note.isNotEmpty)
-                  Text(
-                    entry.note,
-                    style: const TextStyle(fontSize: 12, color: muted),
-                  ),
-              ],
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: a.id,
+                isExpanded: true,
+                items: [
+                  for (final b in store.accounts.where(
+                    (a) => a.kind == 'Инвестиции',
+                  ))
+                    DropdownMenuItem(value: b.id, child: Text(b.name)),
+                ],
+                onChanged: (id) => setState(() => broker = id),
+              ),
             ),
           ),
-          const SizedBox(width: 5),
-          Text(
-            entry.amount,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: entry.amount.startsWith('−')
-                  ? red
-                  : entry.amount.startsWith('+')
-                  ? teal
-                  : ink,
-            ),
+          const SizedBox(width: 10),
+          CircleAction(
+            icon: Icons.add,
+            onPressed: () => showForm(TradeForm(store: store, account: a.id)),
+          ),
+          CircleAction(
+            icon: Icons.file_upload_outlined,
+            onPressed: importReport,
           ),
         ],
       ),
-    ),
-  );
-}
+      const SizedBox(height: 12),
+      Panel(
+        color: saldoGreen,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Стоимость портфеля', style: TextStyle(color: tint)),
+            Text(
+              money(value, a.currency),
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            Text(
+              '${totalGain >= 0 ? '+' : ''}${money(totalGain, a.currency)} (${invested == 0 ? '0' : (totalGain * 100 / invested).toStringAsFixed(2)}%) · за всё время',
+              style: const TextStyle(color: tint, fontSize: 13),
+            ),
+            const Divider(height: 28, color: Colors.white24),
+            Row(
+              children: [
+                Expanded(
+                  child: Metric(
+                    'Вложено',
+                    money(cost, a.currency),
+                    light: true,
+                  ),
+                ),
+                Expanded(
+                  child: Metric(
+                    'Выплачено',
+                    money(payouts, a.currency),
+                    light: true,
+                  ),
+                ),
+                Expanded(
+                  child: Metric(
+                    'Деньги',
+                    money(store.balance(a.id), a.currency),
+                    light: true,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Структура',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            Allocation(positions: positions),
+          ],
+        ),
+      ),
+      const SizedBox(height: 20),
+      if (positions.every((p) => p.units == 0))
+        const EmptyState('Добавьте сделку или импортируйте CSV'),
+      Panel(
+        child: Column(
+          children: [
+            for (final p in positions.where((p) => p.units > 0))
+              PositionTile(
+                position: p,
+                currency: a.currency,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => AssetPage(
+                      store: store,
+                      account: a.id,
+                      symbol: p.symbol,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      TextButton.icon(
+        onPressed: () => showForm(CalendarPage(store: store, account: a.id)),
+        icon: const Icon(Icons.calendar_month_outlined),
+        label: const Text('Календарь выплат'),
+      ),
+      TextButton.icon(
+        onPressed: () => showForm(TradeHistory(store: store, account: a.id)),
+        icon: const Icon(Icons.receipt_long_outlined),
+        label: const Text('История сделок'),
+      ),
+    ];
+  }
 
-class DayTitle extends StatelessWidget {
-  const DayTitle(this.day, this.weekday, this.amount, this.color, {super.key});
-  final String day, weekday, amount;
-  final Color color;
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
+  List<Widget> statistics() {
+    final type = statsFilter == 0 ? 'expense' : 'income';
+    final total = store.total(month, type);
+    final names = store
+        .monthOperations(month)
+        .where((o) => o.type == type)
+        .map((o) => o.category)
+        .toSet();
+    final values = [
+      for (final name in names)
+        (
+          name: name,
+          value: store.total(month, type, name),
+          color: categoryStyle(name).color,
+        ),
+    ]..sort((a, b) => b.value.compareTo(a.value));
+    return [
+      period(),
+      Segments(
+        labels: const ['Расходы', 'Доходы'],
+        selected: statsFilter,
+        change: (i) => setState(() => statsFilter = i),
+      ),
+      const SizedBox(height: 14),
+      Panel(
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            SizedBox(
+              width: 180,
+              height: 180,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CustomPaint(
+                    painter: DonutPainter(
+                      values: values
+                          .map((e) => (value: e.value, color: e.color))
+                          .toList(),
+                    ),
+                  ),
+                  Center(
+                    child: Metric(
+                      statsFilter == 0 ? 'Расходы' : 'Доходы',
+                      money(total),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            if (values.isEmpty) const EmptyState('Нет операций за этот период'),
+            for (final item in values) ...[
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.square_rounded, size: 14, color: item.color),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(item.name)),
+                    Text(
+                      '${(item.value * 100 / total).round()}%',
+                      style: const TextStyle(color: muted),
+                    ),
+                    const SizedBox(width: 20),
+                    Text(
+                      money(item.value),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
       const SizedBox(height: 10),
       Row(
         children: [
-          SizedBox(
-            width: 54,
-            child: Text(
-              day,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 29),
-            ),
-          ),
           Expanded(
-            child: Text(
-              '$weekday\nоктября 2026',
-              style: const TextStyle(fontSize: 12, color: muted),
+            child: Panel(
+              child: Metric(
+                'Отложено',
+                money(
+                  store.total(month, 'income') - store.total(month, 'expense'),
+                ),
+              ),
             ),
           ),
-          Text(
-            amount,
-            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Panel(
+              child: Metric(
+                'В среднем в день',
+                money(total ~/ DateTime(month.year, month.month + 1, 0).day),
+              ),
+            ),
           ),
         ],
       ),
-      const Divider(color: line),
-    ],
+    ];
+  }
+}
+
+String monthLabel(DateTime month) {
+  const names = [
+    'Январь',
+    'Февраль',
+    'Март',
+    'Апрель',
+    'Май',
+    'Июнь',
+    'Июль',
+    'Август',
+    'Сентябрь',
+    'Октябрь',
+    'Ноябрь',
+    'Декабрь',
+  ];
+  return '${names[month.month - 1]} ${month.year}';
+}
+
+Entry categoryStyle(String name) =>
+    categories.where((e) => e.title == name).firstOrNull ??
+    (title: name, note: '', amount: '', icon: Icons.label_outline, color: teal);
+void message(BuildContext context, Object error) =>
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error
+              .toString()
+              .replaceFirst('FormatException: ', '')
+              .replaceFirst('Bad state: ', ''),
+        ),
+      ),
+    );
+Future<String?> textDialog(
+  BuildContext context,
+  String title, {
+  String initial = '',
+  bool numeric = false,
+}) async {
+  final controller = TextEditingController(text: initial);
+  final result = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        keyboardType: numeric
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        onSubmitted: (v) => Navigator.pop(ctx, v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, controller.text),
+          child: const Text('Сохранить'),
+        ),
+      ],
+    ),
+  );
+  // Dispose after the dialog's closing animation completes.
+  Future<void>.delayed(const Duration(seconds: 1), controller.dispose);
+  return result;
+}
+
+class EmptyState extends StatelessWidget {
+  const EmptyState(this.text, {super.key});
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(28),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: const TextStyle(color: muted),
+    ),
   );
 }
 
-const allocationColors = [
+const assetColors = [
   saldoGreen,
   Color(0xffbd680e),
   Color(0xff5c7ccc),
   Color(0xffb6b9ae),
 ];
 
-class AllocationBar extends StatelessWidget {
-  const AllocationBar({super.key});
+class Allocation extends StatelessWidget {
+  const Allocation({super.key, required this.positions});
+  final List<Position> positions;
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(8),
-    child: SizedBox(
-      height: 12,
-      child: Row(
-        children: [
-          for (final (i, value) in [38, 27, 23, 13].indexed)
-            Expanded(
-              flex: value,
-              child: Container(
-                margin: EdgeInsets.only(right: i == 3 ? 0 : 2),
-                color: allocationColors[i],
-              ),
+  Widget build(BuildContext context) {
+    const kinds = ['Акции', 'Облигации', 'Фонды'];
+    final values = [
+      for (final kind in kinds)
+        positions.where((p) => p.kind == kind).fold(0, (s, p) => s + p.value),
+    ];
+    final total = values.fold(0, (a, b) => a + b);
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: 12,
+            child: Row(
+              children: [
+                if (total == 0) Expanded(child: Container(color: line)),
+                for (var i = 0; i < 3; i++)
+                  if (values[i] > 0)
+                    Expanded(
+                      flex: values[i],
+                      child: Container(color: assetColors[i]),
+                    ),
+              ],
             ),
-        ],
-      ),
-    ),
-  );
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 18,
+          runSpacing: 6,
+          children: [
+            for (var i = 0; i < 3; i++)
+              Text(
+                '${kinds[i]}  ${total == 0 ? 0 : (values[i] * 100 / total).round()}%',
+                style: TextStyle(color: assetColors[i], fontSize: 12),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class DonutPainter extends CustomPainter {
-  const DonutPainter({required this.income});
-  final bool income;
+  DonutPainter({required this.values});
+  final List<({int value, Color color})> values;
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = (Offset.zero & size).deflate(12);
-    final segments = income ? [100] : [51, 23, 11, 6, 4, 4, 2];
-    final entries = [8, 0, 7, 1, 3, 2, 5];
-    final sum = segments.reduce((a, b) => a + b);
+    final total = values.fold(0, (s, e) => s + e.value);
+    final rect = (Offset.zero & size).deflate(13);
+    if (total == 0) {
+      canvas.drawOval(
+        rect,
+        Paint()
+          ..color = line
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 24,
+      );
+      return;
+    }
     var start = -math.pi / 2;
-    for (final (i, value) in segments.indexed) {
-      final sweep = 2 * math.pi * value / sum;
+    for (final item in values) {
+      final sweep = 2 * math.pi * item.value / total;
       canvas.drawArc(
         rect,
         start,
-        sweep - .025,
+        math.max(0, sweep - .018),
         false,
         Paint()
-          ..color = income ? teal : categories[entries[i]].color
+          ..color = item.color
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 23,
+          ..strokeWidth = 24,
       );
       start += sweep;
     }
   }
 
   @override
-  bool shouldRepaint(DonutPainter oldDelegate) => income != oldDelegate.income;
+  bool shouldRepaint(DonutPainter oldDelegate) => true;
 }
 
-class OperationSearch extends SearchDelegate<void> {
-  OperationSearch(this.entries) : super(searchFieldLabel: 'Поиск операций');
-  final List<Entry> entries;
+class PositionTile extends StatelessWidget {
+  const PositionTile({
+    super.key,
+    required this.position,
+    required this.currency,
+    required this.onTap,
+  });
+  final Position position;
+  final String currency;
+  final VoidCallback onTap;
   @override
-  List<Widget> buildActions(BuildContext context) => [
-    IconButton(onPressed: () => query = '', icon: const Icon(Icons.clear)),
-  ];
-  @override
-  Widget buildLeading(BuildContext context) =>
-      BackButton(onPressed: () => close(context, null));
-  @override
-  Widget buildResults(BuildContext context) => buildSuggestions(context);
-  @override
-  Widget buildSuggestions(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      for (final entry in entries)
-        if ('${entry.title} ${entry.note}'.toLowerCase().contains(
-          query.trim().toLowerCase(),
-        ))
-          EntryTile(entry),
-    ],
-  );
-}
-
-class OperationSheet extends StatefulWidget {
-  const OperationSheet({super.key, required this.persist});
-  final Future<void> Function(Entry) persist;
-  @override
-  State<OperationSheet> createState() => _OperationSheetState();
-}
-
-class _OperationSheetState extends State<OperationSheet> {
-  int type = 0;
-  int account = 0;
-  int category = 0;
-  String digits = '0';
-  DateTime day = DateTime.now();
-  static const types = ['Расход', 'Доход', 'Перевод', 'Сделка'];
-
-  void keyTap(String key) {
-    setState(() {
-      if (key == '⌫') {
-        digits = digits.length > 1
-            ? digits.substring(0, digits.length - 1)
-            : '0';
-      } else if (key == ',') {
-        if (!digits.contains(',')) digits += ',';
-      } else if (digits.length < 12 &&
-          (!digits.contains(',') || digits.split(',').last.length < 2)) {
-        digits = digits == '0' ? key : digits + key;
-      }
-    });
-  }
-
-  bool saving = false;
-  String? saveError;
-
-  Future<void> save() async {
-    final amount = digits.endsWith(',')
-        ? digits.substring(0, digits.length - 1)
-        : digits;
-    if ((double.tryParse(amount.replaceAll(',', '.')) ?? 0) <= 0) {
-      setState(() => saveError = 'Введите сумму больше нуля');
-      return;
-    }
-    final entry = categories[category];
-    setState(() {
-      saving = true;
-      saveError = null;
-    });
-    try {
-      await widget.persist((
-        title: type == 0 ? entry.title : types[type],
-        note:
-            '${day.day}.${day.month}.${day.year} · ${demoAccounts[account].title}',
-        amount:
-            '${type == 0
-                ? '−'
-                : type == 1
-                ? '+'
-                : ''}$amount ₽',
-        icon: entry.icon,
-        color: entry.color,
-      ));
-      if (mounted) Navigator.pop(context, true);
-    } catch (_) {
-      if (mounted)
-        setState(() {
-          saving = false;
-          saveError =
-              'Не удалось сохранить операцию. Проверьте подключение к API.';
-        });
-    }
-  }
-
-  Widget selector(
-    String title,
-    List<Entry> entries,
-    int selected,
-    ValueChanged<int> change,
-  ) {
-    final entry = entries[selected];
-    return Panel(
-      color: Color.lerp(Colors.white, entry.color, .15)!,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 12)),
-          DropdownButton<int>(
-            isExpanded: true,
-            isDense: true,
-            underline: const SizedBox.shrink(),
-            value: selected,
-            onChanged: (i) {
-              if (i != null) setState(() => change(i));
-            },
-            items: [
-              for (final (i, item) in entries.indexed)
-                DropdownMenuItem(
-                  value: i,
-                  child: Text(item.title, overflow: TextOverflow.ellipsis),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 5,
-            decoration: BoxDecoration(
-              color: line,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Segments(
-            labels: types,
-            selected: type,
-            change: (i) => setState(() => type = i),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                onPressed: () => setState(
-                  () => day = DateTime(day.year, day.month, day.day - 1),
-                ),
-                icon: const Icon(Icons.chevron_left),
-              ),
-              Text('${day.day}.${day.month}.${day.year}'),
-              IconButton(
-                onPressed: () => setState(
-                  () => day = DateTime(day.year, day.month, day.day + 1),
-                ),
-                icon: const Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: selector(
-                  'Счёт',
-                  demoAccounts,
-                  account,
-                  (i) => account = i,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: selector(
-                  'Категория',
-                  categories,
-                  category,
-                  (i) => category = i,
-                ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              '$digits ₽',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 42),
-            ),
-          ),
-          const Divider(color: line),
-          if (saveError != null)
-            Text(saveError!, style: const TextStyle(color: red)),
-          GridView.count(
-            crossAxisCount: 4,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.15,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            children: [
-              for (final key in [
-                '7',
-                '8',
-                '9',
-                '⌫',
-                '4',
-                '5',
-                '6',
-                '1',
-                '2',
-                '3',
-                '0',
-                ',',
-              ])
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: ink,
-                    padding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(17),
-                    ),
-                  ),
-                  onPressed: () => keyTap(key),
-                  child: Text(key, style: const TextStyle(fontSize: 22)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: saldoGreen),
-              onPressed: saving ? null : save,
-              child: const Icon(Icons.check),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class AssetPage extends StatelessWidget {
-  const AssetPage({super.key, required this.addOperation});
-  final VoidCallback addOperation;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      backgroundColor: saldoBackground,
-      title: const Column(
-        children: [
-          Text(
-            'ОФЗ 26238',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            'Облигация федерального займа',
-            style: TextStyle(fontSize: 12, color: muted),
-          ),
-        ],
-      ),
-    ),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '612,30 ₽',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 30),
-              ),
-              Text(
-                '61,23% от номинала · +7,20% за полгода',
-                style: TextStyle(color: muted),
-              ),
-              SizedBox(height: 16),
-              SizedBox(
-                height: 135,
-                width: double.infinity,
-                child: CustomPaint(painter: AssetChart()),
-              ),
-              SizedBox(height: 12),
-              Center(
-                child: Text(
-                  '1Н          1М          6М          1Г          Всё',
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Panel(
-          color: saldoGreen,
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    Metric('В портфеле', '40 шт.', light: true),
-                    SizedBox(height: 12),
-                    Metric('Средняя цена покупки', '584,60 ₽', light: true),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    Metric('Стоимость', '24 492 ₽', light: true),
-                    SizedBox(height: 12),
-                    Metric('Доход по цене', '+1 108 ₽ · +4,7%', light: true),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Panel(
-          child: Column(
-            children: [
-              SectionTitle('Купон', '7,1% · 2 раза в год'),
-              Divider(height: 1, color: line),
-              SectionTitle('Номинал', '1 000 ₽'),
-              Divider(height: 1, color: line),
-              SectionTitle('Погашение', '15 мая 2041'),
-              Divider(height: 1, color: line),
-              SectionTitle('Доходность к погашению', '≈ 13,9%'),
-              Divider(height: 1, color: line),
-              SectionTitle('НКД', '33,07 ₽ за шт.'),
-            ],
-          ),
-        ),
-      ],
-    ),
-    bottomNavigationBar: SafeArea(
+  Widget build(BuildContext context) {
+    final p = position;
+    return InkWell(
+      onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
+            CircleAvatar(
+              backgroundColor: tint,
+              child: Text(
+                p.symbol.substring(0, math.min(4, p.symbol.length)),
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: saldoGreen,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
             Expanded(
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  addOperation();
-                },
-                child: const Text('Записать продажу'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    '${quantity(p.units)} шт. × ${money(p.quote, currency)}',
+                    style: const TextStyle(fontSize: 12, color: muted),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  addOperation();
-                },
-                child: const Text('Записать покупку'),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  money(p.value, currency),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  '${p.profit >= 0 ? '+' : ''}${money(p.profit, currency)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: p.profit >= 0 ? teal : red,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-    ),
-  );
-}
-
-class AssetChart extends CustomPainter {
-  const AssetChart();
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final fraction in [.1, .5, .9]) {
-      final y = size.height * fraction;
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        Paint()..color = line,
-      );
-    }
-    const data = [
-      .12,
-      .24,
-      .26,
-      .22,
-      .34,
-      .35,
-      .43,
-      .29,
-      .37,
-      .32,
-      .3,
-      .5,
-      .57,
-      .64,
-      .62,
-      .54,
-      .63,
-      .6,
-      .45,
-      .63,
-      .72,
-      .57,
-      .72,
-      .84,
-      .88,
-      .7,
-      .58,
-      .65,
-      .78,
-      .67,
-      .69,
-      .81,
-    ];
-    final trend = Path()..moveTo(0, size.height * (1 - data.first));
-    for (var i = 1; i < data.length; i++) {
-      trend.lineTo(
-        size.width * i / (data.length - 1),
-        size.height * (1 - data[i]),
-      );
-    }
-    final fill = Path.from(trend)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(fill, Paint()..color = const Color(0xffe8f2ed));
-    canvas.drawPath(
-      trend,
-      Paint()
-        ..color = saldoGreen
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
     );
   }
-
-  @override
-  bool shouldRepaint(AssetChart oldDelegate) => false;
 }

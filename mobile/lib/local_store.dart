@@ -439,6 +439,13 @@ class LocalStore extends ChangeNotifier {
     final candidate = [...trades];
     for (final row in rows) {
       strictDate(row.date);
+      final gross =
+          BigInt.from(row.units) *
+          BigInt.from(row.price) ~/
+          BigInt.from(1000000);
+      if (gross <= BigInt.zero || gross > BigInt.from(9000000000000000)) {
+        throw const FormatException('Сумма сделки вне допустимого диапазона');
+      }
       if (account(row.account).kind != 'Инвестиции' ||
           row.units <= 0 ||
           row.price <= 0 ||

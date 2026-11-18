@@ -265,7 +265,7 @@ class _OperationFormState extends State<OperationForm> {
               : 0,
         ),
       );
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context, date);
     } catch (e) {
       if (mounted)
         setState(() {

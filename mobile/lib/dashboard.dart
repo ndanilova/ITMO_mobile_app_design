@@ -46,7 +46,18 @@ class _DashboardState extends State<Dashboard> {
     backgroundColor: saldoBackground,
     builder: (_) => form,
   );
-  Future<void> operation() => showForm(OperationForm(store: store));
+  Future<void> operation() async {
+    final date = await showModalBottomSheet<DateTime>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: saldoBackground,
+      builder: (_) => OperationForm(store: store),
+    );
+    if (date != null && mounted)
+      setState(() => month = DateTime(date.year, date.month));
+  }
+
   void importReport() => Navigator.push<void>(
     context,
     MaterialPageRoute(builder: (_) => ImportScreen(store: store)),
@@ -112,6 +123,7 @@ class _DashboardState extends State<Dashboard> {
                       Container(
                         width: 56,
                         height: 30,
+                        alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: tab == i ? tint : null,
                           borderRadius: BorderRadius.circular(20),

@@ -13,10 +13,10 @@ const ink = Color(0xff15181c);
 
 const tabs = ['Счета', 'Категории', 'Операции', 'Портфель', 'Статистика'];
 const tabIcons = [
-  Icons.account_balance_wallet_outlined,
+  Icons.account_balance_wallet,
   Icons.category_outlined,
   Icons.receipt_long_outlined,
-  Icons.trending_up,
+  Icons.stacked_line_chart,
   Icons.bar_chart_outlined,
 ];
 

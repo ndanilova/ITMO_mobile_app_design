@@ -16,12 +16,12 @@ void main() {
     'Local data drives all tabs and the import confirms without network',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 844));
-      final directory = await Directory.systemTemp.createTemp('saldo-widget');
+      final directory = Directory.systemTemp.createTempSync('saldo-widget');
       final store = LocalStore(File('${directory.path}/data.json'));
       await tester.runAsync(store.seed);
       final font = FontLoader('Manrope')
         ..addFont(rootBundle.load('assets/fonts/Manrope.ttf'));
-      await font.load();
+      await tester.runAsync(font.load);
       final boundary = GlobalKey();
       await tester.pumpWidget(
         RepaintBoundary(
@@ -43,17 +43,17 @@ void main() {
 
       Future<void> capture(String name) async {
         if (const bool.fromEnvironment('SALDO_SCREENSHOTS')) {
-          final image =
-              await (boundary.currentContext!.findRenderObject()!
-                      as RenderRepaintBoundary)
-                  .toImage();
-          final data = await image.toByteData(format: ui.ImageByteFormat.png);
           await tester.runAsync(() async {
+            final image =
+                await (boundary.currentContext!.findRenderObject()!
+                        as RenderRepaintBoundary)
+                    .toImage();
+            final data = await image.toByteData(format: ui.ImageByteFormat.png);
             final file = File('build/previews/$name.png');
             await file.parent.create(recursive: true);
             await file.writeAsBytes(data!.buffer.asUint8List());
+            image.dispose();
           });
-          image.dispose();
         }
       }
 
@@ -79,9 +79,19 @@ void main() {
       expect(find.byType(OperationForm), findsOneWidget);
       await capture('add-operation');
       expect(tester.takeException(), isNull);
-      // Close the sheet and show a real locally calculated asset.
-      Navigator.of(tester.element(find.byType(OperationForm))).pop();
+      await tester.tap(find.text('1').last);
+      await tester.tap(find.text('2').last);
+      await tester.tap(find.text(',').last);
+      await tester.tap(find.text('5').last);
+      await tester.tap(find.byIcon(Icons.check).last);
+      await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
       await tester.pumpAndSettle();
+      expect(find.byType(OperationForm), findsNothing);
+      final reopened = LocalStore(store.file);
+      await tester.runAsync(reopened.load);
+      expect(reopened.operations.any((o) => o.amount == 1250), isTrue);
       Navigator.of(tester.element(find.byType(Dashboard))).push(
         MaterialPageRoute<void>(
           builder: (_) =>
@@ -115,7 +125,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.binding.setSurfaceSize(null);
-      await directory.delete(recursive: true);
+      directory.deleteSync(recursive: true);
     },
   );
 }

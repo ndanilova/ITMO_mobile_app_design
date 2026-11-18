@@ -241,21 +241,40 @@ class _DashboardState extends State<Dashboard> {
       ),
     ],
   );
+  int accountValue(Account a) =>
+      store.balance(a.id) +
+      (a.kind == 'Инвестиции'
+          ? store.positions(a.id).fold(0, (sum, p) => sum + p.value)
+          : 0);
+
   Entry accountEntry(Account a) {
-    final value = store.balance(a.id);
+    final value = accountValue(a);
+    final icon = a.kind == 'Инвестиции'
+        ? Icons.trending_up
+        : a.currency != 'RUB'
+        ? Icons.attach_money
+        : a.kind == 'Сбережения'
+        ? (a.name.contains('Вклад') ? Icons.lock_outline : Icons.percent)
+        : a.name.toLowerCase().contains('карт')
+        ? Icons.credit_card
+        : Icons.account_balance_wallet_outlined;
     return (
       title: a.name,
-      note: a.currency == 'RUB' ? a.kind : '≈ ${money(store.rub(value, a.id))}',
+      note: a.kind == 'Инвестиции'
+          ? 'Деньги: ${money(store.balance(a.id), a.currency)}'
+          : a.currency == 'RUB'
+          ? a.kind
+          : '≈ ${money(store.rub(value, a.id))}',
       amount: money(value, a.currency),
-      icon: a.kind == 'Инвестиции'
-          ? Icons.trending_up
-          : a.kind == 'Сбережения'
-          ? Icons.savings_outlined
-          : Icons.account_balance_wallet_outlined,
+      icon: icon,
       color: a.kind == 'Инвестиции'
           ? saldoGreen
+          : a.currency != 'RUB'
+          ? const Color(0xff6941c6)
           : a.kind == 'Сбережения'
           ? const Color(0xffa84d07)
+          : icon == Icons.credit_card
+          ? const Color(0xff3155c7)
           : teal,
     );
   }
@@ -280,10 +299,7 @@ class _DashboardState extends State<Dashboard> {
           money(
             store.accounts
                 .where((a) => a.kind == kind)
-                .fold(
-                  0,
-                  (sum, a) => sum + store.rub(store.balance(a.id), a.id),
-                ),
+                .fold(0, (sum, a) => sum + store.rub(accountValue(a), a.id)),
           ),
         ),
         for (final a in store.accounts.where((a) => a.kind == kind))

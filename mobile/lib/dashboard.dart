@@ -550,7 +550,11 @@ class _DashboardState extends State<Dashboard> {
                               child: Text(
                                 money(amount),
                                 style: TextStyle(
-                                  color: type == 'expense' ? red : teal,
+                                  color: amount == 0
+                                      ? muted
+                                      : type == 'expense'
+                                      ? red
+                                      : teal,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -1041,6 +1045,13 @@ class PositionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = position;
+    final color = p.kind == 'Фонды'
+        ? const Color(0xff3155c7)
+        : p.kind == 'Облигации'
+        ? const Color(0xffa84d07)
+        : p.symbol == 'LKOH'
+        ? red
+        : teal;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -1048,12 +1059,14 @@ class PositionTile extends StatelessWidget {
         child: Row(
           children: [
             CircleAvatar(
-              backgroundColor: tint,
+              backgroundColor: Color.lerp(Colors.white, color, .13),
               child: Text(
-                p.symbol.substring(0, math.min(4, p.symbol.length)),
-                style: const TextStyle(
+                p.symbol.startsWith('SU')
+                    ? 'ОФЗ'
+                    : p.symbol.substring(0, math.min(4, p.symbol.length)),
+                style: TextStyle(
                   fontSize: 10,
-                  color: saldoGreen,
+                  color: color,
                   fontWeight: FontWeight.bold,
                 ),
               ),

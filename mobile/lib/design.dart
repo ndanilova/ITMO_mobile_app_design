@@ -171,7 +171,9 @@ class Segments extends StatelessWidget {
     required this.labels,
     required this.selected,
     required this.change,
+    this.prominent = false,
   });
+  final bool prominent;
   final List<String> labels;
   final int selected;
   final ValueChanged<int> change;
@@ -187,14 +189,41 @@ class Segments extends StatelessWidget {
         labels.length,
         (i) => Expanded(
           child: Material(
-            color: i == selected ? Colors.white : Colors.transparent,
+            color: i == selected
+                ? (prominent ? saldoGreen : Colors.white)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(11),
             child: InkWell(
               borderRadius: BorderRadius.circular(11),
               onTap: () => change(i),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text(labels[i], textAlign: TextAlign.center),
+                child: labels[i].contains('\n')
+                    ? Column(
+                        children: [
+                          Text(labels[i].split('\n').first),
+                          const SizedBox(height: 2),
+                          FittedBox(
+                            child: Text(
+                              labels[i].split('\n').last,
+                              style: TextStyle(
+                                fontSize: 21,
+                                fontWeight: FontWeight.w800,
+                                color: i == 0 ? red : teal,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        labels[i],
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: prominent && i == selected
+                              ? Colors.white
+                              : ink,
+                        ),
+                      ),
               ),
             ),
           ),

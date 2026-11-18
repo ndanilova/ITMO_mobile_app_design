@@ -88,14 +88,21 @@ Widget select<T>(
   List<T> items,
   ValueChanged<T> change, {
   String Function(T)? name,
+  Color? tintColor,
 }) => DropdownButtonFormField<T>(
   initialValue: value,
   isExpanded: true,
   decoration: InputDecoration(
     labelText: label,
     filled: true,
-    fillColor: Colors.white,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+    fillColor: tintColor == null
+        ? Colors.white
+        : Color.lerp(Colors.white, tintColor, .12),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: tintColor ?? line),
+    ),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
   ),
   items: [
     for (final item in items)
@@ -299,6 +306,7 @@ class _OperationFormState extends State<OperationForm> {
           ),
           const SizedBox(height: 10),
           Segments(
+            prominent: true,
             labels: const ['Расход', 'Доход', 'Перевод', 'Сделка'],
             selected: type,
             change: (i) {
@@ -356,6 +364,7 @@ class _OperationFormState extends State<OperationForm> {
                     if (target == v) target = null;
                   }),
                   name: (id) => store.account(id).name,
+                  tintColor: const Color(0xff3155c7),
                 ),
               ),
               const SizedBox(width: 10),
@@ -366,6 +375,7 @@ class _OperationFormState extends State<OperationForm> {
                     category,
                     store.categories,
                     (v) => setState(() => category = v),
+                    tintColor: const Color(0xff6941c6),
                   ),
                 ),
             ],
@@ -444,13 +454,15 @@ class _OperationFormState extends State<OperationForm> {
                           ),
                         ),
                         onPressed: busy ? null : () => tap(key),
-                        child: Text(
-                          key,
-                          style: const TextStyle(
-                            fontSize: 23,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        child: key == '⌫'
+                            ? const Icon(Icons.backspace_outlined)
+                            : Text(
+                                key,
+                                style: const TextStyle(
+                                  fontSize: 23,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                   ],
                 ),
@@ -1077,6 +1089,12 @@ class _AssetPageState extends State<AssetPage> {
             children: [
               Expanded(
                 child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 14,
+                    ),
+                  ),
                   onPressed: p.units == 0 ? null : () => trade('sell'),
                   child: const Text('Записать продажу'),
                 ),
@@ -1084,6 +1102,12 @@ class _AssetPageState extends State<AssetPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 14,
+                    ),
+                  ),
                   onPressed: () => trade('buy'),
                   child: const Text('Записать покупку'),
                 ),

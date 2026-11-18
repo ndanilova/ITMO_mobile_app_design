@@ -229,7 +229,7 @@ class EntryIcon extends StatelessWidget {
       color: Color.lerp(Colors.white, entry.color, .15),
       borderRadius: BorderRadius.circular(14),
     ),
-    child: FigmaIcon(entry.icon, color: entry.color, size: 20),
+    child: Center(child: FigmaIcon(entry.icon, color: entry.color, size: 20)),
   );
 }
 

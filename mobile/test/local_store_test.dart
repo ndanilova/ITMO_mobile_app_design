@@ -184,6 +184,7 @@ void main() {
       expect(store.balance('broker'), 1000000);
       await store.togglePayout(store.payouts.single);
       expect(store.balance('broker'), 1008700);
+      expect(store.total(DateTime(2026, 1), 'income', 'Купон'), 8700);
       await store.togglePayout(store.payouts.single);
       expect(store.balance('broker'), 1000000);
     },

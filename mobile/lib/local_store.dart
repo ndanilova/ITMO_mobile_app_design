@@ -334,10 +334,24 @@ class LocalStore extends ChangeNotifier {
                 sum + rub(positions(a.id).fold(0, (v, p) => v + p.value), a.id),
           );
 
-  List<Operation> monthOperations(DateTime month) => operations.where((o) {
-    final d = DateTime.parse(o.date);
-    return d.year == month.year && d.month == month.month;
-  }).toList()..sort((a, b) => b.date.compareTo(a.date));
+  List<Operation> monthOperations(DateTime month) =>
+      [
+          ...operations,
+          for (final p in payouts.where((p) => p.paid && p.amount > p.tax))
+            Operation(
+              id: 'payout:${p.id}',
+              date: p.date,
+              type: 'income',
+              account: p.account,
+              amount: p.amount - p.tax,
+              category: p.type,
+              note: p.symbol,
+            ),
+        ].where((o) {
+          final d = DateTime.parse(o.date);
+          return d.year == month.year && d.month == month.month;
+        }).toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
   int total(DateTime month, String type, [String? category]) =>
       monthOperations(month)
           .where(
@@ -409,8 +423,17 @@ class LocalStore extends ChangeNotifier {
     }
     operations.add(o);
   });
-  Future<void> deleteOperation(String id) =>
-      change(() => operations.removeWhere((o) => o.id == id));
+  Future<void> deleteOperation(String id) => change(() {
+    if (id.startsWith('payout:')) {
+      final index = payouts.indexWhere((p) => 'payout:${p.id}' == id);
+      if (index >= 0)
+        payouts[index] = Payout.fromJson(
+          payouts[index].toJson()..['paid'] = false,
+        );
+    } else {
+      operations.removeWhere((o) => o.id == id);
+    }
+  });
   Future<void> saveTrade(Trade t) => importTrades([t]);
   Future<void> importTrades(List<Trade> rows) => change(() {
     final candidate = [...trades];

@@ -22,11 +22,16 @@ void main() {
       final font = FontLoader('Manrope')
         ..addFont(rootBundle.load('assets/fonts/Manrope.ttf'));
       await tester.runAsync(font.load);
+      final materialFont = FontLoader('MaterialIcons')
+        ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+      await tester.runAsync(materialFont.load);
+      debugDisableShadows = false;
       final boundary = GlobalKey();
       await tester.pumpWidget(
         RepaintBoundary(
           key: boundary,
           child: MaterialApp(
+            debugShowCheckedModeBanner: false,
             theme: ThemeData(
               fontFamily: 'Manrope',
               scaffoldBackgroundColor: saldoBackground,
@@ -83,10 +88,12 @@ void main() {
       await tester.tap(find.text('2').last);
       await tester.tap(find.text(',').last);
       await tester.tap(find.text('5').last);
-      await tester.tap(find.byIcon(Icons.check).last);
-      await tester.runAsync(
-        () async => Future<void>.delayed(const Duration(milliseconds: 100)),
-      );
+      await tester.runAsync(() async {
+        await tester.tap(find.byIcon(Icons.check).last);
+        while (store.busy) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
       await tester.pumpAndSettle();
       expect(find.byType(OperationForm), findsNothing);
       final reopened = LocalStore(store.file);
@@ -115,16 +122,19 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).last,
       );
-      await tester.tap(find.text('Подтвердить импорт'));
-      await tester.runAsync(
-        () async => Future<void>.delayed(const Duration(milliseconds: 100)),
-      );
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Подтвердить импорт'));
+        while (store.busy) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
       await tester.pumpAndSettle();
       expect(find.text('Импорт сохранён на устройстве'), findsOneWidget);
       expect(store.trades.length, 4);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.binding.setSurfaceSize(null);
+      debugDisableShadows = true;
       directory.deleteSync(recursive: true);
     },
   );
